@@ -1,0 +1,7 @@
+// UI test demo app configuration.
+
+#include "Shared.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.swiftpagerkit.demo
+TEST_TARGET_NAME = SwiftPagerKitDemo
+PRODUCT_MODULE_NAME = $(PRODUCT_NAME)UITests

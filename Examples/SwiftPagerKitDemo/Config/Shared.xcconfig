@@ -1,0 +1,19 @@
+// Shared demo app configuration.
+PRODUCT_NAME = SwiftPagerKitDemo
+PRODUCT_DISPLAY_NAME = SwiftPagerKitDemo
+PRODUCT_BUNDLE_IDENTIFIER = com.swiftpagerkit.demo
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+DEMO_DEVELOPMENT_TEAM =
+#include? "Signing.local.xcconfig"
+
+IPHONEOS_DEPLOYMENT_TARGET = 26.0
+
+// (1 == iPhone, 2 == iPad)
+TARGETED_DEVICE_FAMILY = 1,2
+
+GENERATE_INFOPLIST_FILE = NO
+INFOPLIST_FILE = Config/Info.plist
+
+CODE_SIGN_ENTITLEMENTS = Config/SwiftPagerKitDemo.entitlements

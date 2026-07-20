@@ -1,0 +1,15 @@
+# Xcode
+xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcresult
+
+# SwiftPM
+.build/
+
+# Local demo credentials
+Config/Signing.local.xcconfig

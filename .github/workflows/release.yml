@@ -1,0 +1,252 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version tag, for example 0.1.0
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub release as a prerelease
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build And Publish Binary Release
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_PATH="$(/usr/bin/python3 <<'PY'
+          import glob
+          import re
+
+          paths = glob.glob("/Applications/Xcode_26*.app")
+          if not paths:
+              raise SystemExit("No Xcode 26 installation found")
+
+          def version(path):
+              match = re.search(r"Xcode_([0-9.]+)\.app$", path)
+              return tuple(int(part) for part in match.group(1).split(".")) if match else ()
+
+          print(sorted(paths, key=version)[-1])
+          PY
+          )"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+
+      - name: Show Xcode Version
+        run: xcodebuild -version
+
+      - name: Check Release Tooling
+        run: |
+          command -v gh >/dev/null || {
+              printf 'error: GitHub CLI is required on the runner\n' >&2
+              exit 1
+          }
+          gh --version
+
+      - name: Validate Release Input
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="$INPUT_VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+              printf 'error: version must look like 0.1.0 or 0.1.0-preview.1\n' >&2
+              exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+              printf 'error: tag %s already exists\n' "$VERSION" >&2
+              exit 1
+          fi
+
+          {
+              echo "RELEASE_VERSION=$VERSION"
+              echo "BINARY_ARTIFACT_NAME=SwiftPagerKitCore.xcframework.zip"
+          } >> "$GITHUB_ENV"
+
+      - name: Resolve iOS Simulator
+        run: echo "SIMULATOR_ID=$(scripts/test/simulator.sh)" >> "$GITHUB_ENV"
+
+      - name: SwiftPM Debug Smoke
+        run: swift test
+
+      - name: SwiftPM Release Smoke
+        run: swift test -c release
+
+      - name: Binary Validation And UIKit Tests
+        run: scripts/test/binary.sh
+
+      - name: Demo Runtime Validation
+        run: scripts/test/demo.sh
+
+      - name: Generate Binary Release Manifest
+        run: |
+          ARTIFACT_PATH=".build/xcframework/output/$BINARY_ARTIFACT_NAME"
+          CHECKSUM="$(cat .build/xcframework/output/checksum.txt)"
+          MANIFEST_PATH="$(scripts/build/manifest.sh "$RELEASE_VERSION" "$CHECKSUM" ".build/release/Package.swift")"
+          RELEASE_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_VERSION/$BINARY_ARTIFACT_NAME"
+
+          {
+              echo "ARTIFACT_PATH=$ARTIFACT_PATH"
+              echo "ARTIFACT_CHECKSUM=$CHECKSUM"
+              echo "RELEASE_MANIFEST_PATH=$MANIFEST_PATH"
+              echo "RELEASE_ARTIFACT_URL=$RELEASE_URL"
+          } >> "$GITHUB_ENV"
+
+          cat > .build/release/notes.md <<EOF
+          SwiftPagerKit $RELEASE_VERSION
+
+          SwiftPM binary artifact:
+          $RELEASE_URL
+
+          Checksum:
+          $CHECKSUM
+          EOF
+
+      - name: Create Binary Manifest Tag
+        run: |
+          cp "$RELEASE_MANIFEST_PATH" Package.swift
+          swift package dump-package >/dev/null
+
+          PACKAGE_RESOLVED_FILES="$(
+              find . \
+                  \( -path './.build' -o -path './.swiftpm' \) -prune \
+                  -o -name Package.resolved -print
+          )"
+          if [[ -n "$PACKAGE_RESOLVED_FILES" ]]; then
+              printf 'error: Package.resolved exists outside ignored build folders; release tag refuses to include resolved state\n' >&2
+              printf '%s\n' "$PACKAGE_RESOLVED_FILES" >&2
+              exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+
+          STAGED_FILES="$(git diff --cached --name-only)"
+          if [[ "$STAGED_FILES" != "Package.swift" ]]; then
+              printf 'error: release tag must stage only Package.swift, got:\n%s\n' "$STAGED_FILES" >&2
+              exit 1
+          fi
+
+          git commit -m "Release $RELEASE_VERSION binary manifest"
+          git tag -a "$RELEASE_VERSION" -m "SwiftPagerKit $RELEASE_VERSION"
+          git push origin "refs/tags/$RELEASE_VERSION"
+          mkdir -p .build/release
+          touch .build/release/tag-pushed
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          release_flags=()
+          if [[ "$INPUT_PRERELEASE" == "true" ]]; then
+              release_flags+=(--prerelease)
+          fi
+
+          gh release create "$RELEASE_VERSION" \
+              "$ARTIFACT_PATH#$BINARY_ARTIFACT_NAME" \
+              --title "SwiftPagerKit $RELEASE_VERSION" \
+              --notes-file .build/release/notes.md \
+              --verify-tag \
+              "${release_flags[@]}"
+
+      - name: Verify Uploaded Binary Release
+        run: |
+          mkdir -p .build/release/verify
+          curl --fail --location --silent --show-error "$RELEASE_ARTIFACT_URL" --output ".build/release/verify/$BINARY_ARTIFACT_NAME"
+
+          DOWNLOADED_CHECKSUM="$(swift package compute-checksum ".build/release/verify/$BINARY_ARTIFACT_NAME")"
+          if [[ "$DOWNLOADED_CHECKSUM" != "$ARTIFACT_CHECKSUM" ]]; then
+              printf 'error: uploaded checksum %s does not match expected %s\n' "$DOWNLOADED_CHECKSUM" "$ARTIFACT_CHECKSUM" >&2
+              exit 1
+          fi
+
+          RELEASE_CONSUMER_DIR=".build/release/remote-consumer"
+          mkdir -p "$RELEASE_CONSUMER_DIR/Sources/ReleaseConsumerProbe"
+          cat > "$RELEASE_CONSUMER_DIR/Package.swift" <<EOF
+          // swift-tools-version: 6.0
+          import PackageDescription
+
+          let package = Package(
+              name: "ReleaseConsumer",
+              platforms: [.iOS(.v15)],
+              products: [
+                  .library(name: "ReleaseConsumerProbe", targets: ["ReleaseConsumerProbe"])
+              ],
+              dependencies: [
+                  .package(url: "https://github.com/$GITHUB_REPOSITORY.git", exact: "$RELEASE_VERSION")
+              ],
+              targets: [
+                  .target(
+                      name: "ReleaseConsumerProbe",
+                      dependencies: [
+                          .product(name: "SwiftPagerKit", package: "SwiftPagerKit")
+                      ]
+                  )
+              ]
+          )
+          EOF
+
+          cat > "$RELEASE_CONSUMER_DIR/Sources/ReleaseConsumerProbe/ReleaseConsumerProbe.swift" <<'EOF'
+          import SwiftPagerKit
+          import SwiftUI
+
+          public struct ReleaseConsumerProbe: View {
+              @State private var page = 0
+
+              public init() {}
+
+              public var body: some View {
+                  SwiftPager([0, 1, 2], page: $page) { item in
+                      Text("\(item)")
+                  }
+                  .preloadDistance(1)
+              }
+          }
+          EOF
+
+          ROOT_DIR="$PWD"
+          (
+              cd "$RELEASE_CONSUMER_DIR"
+              xcodebuild \
+                  -quiet \
+                  -scheme ReleaseConsumer \
+                  -configuration Release \
+                  -destination 'generic/platform=iOS Simulator' \
+                  -clonedSourcePackagesDirPath "$ROOT_DIR/.build/release/source-packages" \
+                  -derivedDataPath "$ROOT_DIR/.build/release/remote-derived-data" \
+                  CODE_SIGNING_ALLOWED=NO \
+                  build
+          )
+
+      - name: Cleanup Failed Release
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -z "${RELEASE_VERSION:-}" || ! -f .build/release/tag-pushed ]]; then
+              exit 0
+          fi
+
+          gh release delete "$RELEASE_VERSION" --yes --cleanup-tag >/dev/null 2>&1 || true
+          git push origin ":refs/tags/$RELEASE_VERSION" >/dev/null 2>&1 || true

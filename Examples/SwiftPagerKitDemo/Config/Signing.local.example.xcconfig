@@ -1,0 +1,2 @@
+// Copy to Signing.local.xcconfig for local device demos.
+DEMO_DEVELOPMENT_TEAM = ABCDE12345

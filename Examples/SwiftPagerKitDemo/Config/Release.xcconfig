@@ -1,0 +1,3 @@
+// Release demo app configuration.
+
+#include "Shared.xcconfig"

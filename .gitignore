@@ -1,0 +1,14 @@
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcresult
+.DS_Store
+Examples/SwiftPagerKitDemo/Config/Signing.local.xcconfig
