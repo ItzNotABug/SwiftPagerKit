@@ -32,6 +32,7 @@ on:
       - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Tests/**
       - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoUITests/**
       - .github/workflows/ci.yml
+      - .github/workflows/release.yml
   push:
     branches:
       - main
@@ -49,6 +50,7 @@ on:
       - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Tests/**
       - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoUITests/**
       - .github/workflows/ci.yml
+      - .github/workflows/release.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
