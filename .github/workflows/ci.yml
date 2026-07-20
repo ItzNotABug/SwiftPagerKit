@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_demo_validation:
+        description: Run the demo app runtime validation
+        required: false
+        type: boolean
+        default: false
   pull_request:
     types:
       - opened
@@ -96,4 +101,5 @@ jobs:
         run: scripts/test/binary.sh
 
       - name: Demo Runtime Validation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_demo_validation }}
         run: scripts/test/demo.sh

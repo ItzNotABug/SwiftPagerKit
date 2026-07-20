@@ -140,10 +140,10 @@ The demo includes a bundled image gallery, a fullscreen image pager, and a verti
 swift test
 swift test -c release
 scripts/test/binary.sh
-scripts/test/demo.sh
 ```
 
 `swift test` is a fast smoke check. UIKit behavior coverage runs through the simulator-backed scripts.
+Run `scripts/test/demo.sh` when changing the sample app.
 
 ## FAQ
 
