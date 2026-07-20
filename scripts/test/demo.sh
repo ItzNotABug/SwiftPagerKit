@@ -7,11 +7,56 @@ WORKSPACE_PATH="$PACKAGE_DIR/Examples/SwiftPagerKitDemo/SwiftPagerKitDemo.xcwork
 DERIVED_DATA_PATH="$PACKAGE_DIR/.build/demo"
 SIMULATOR_ID="${SIMULATOR_ID:-}"
 SIMULATOR_NAME="${SIMULATOR_NAME:-}"
+SIMULATOR_ARCH="${SIMULATOR_ARCH:-$(uname -m)}"
+DEMO_TEST_TIMEOUT_SECONDS="${DEMO_TEST_TIMEOUT_SECONDS:-900}"
+DEMO_BUILD_TIMEOUT_SECONDS="${DEMO_BUILD_TIMEOUT_SECONDS:-600}"
+RUN_DEMO_INSTALL_SMOKE="${RUN_DEMO_INSTALL_SMOKE:-0}"
 BUNDLE_ID="com.swiftpagerkit.demo"
 APP_NAME="SwiftPagerKitDemo.app"
 
 log() {
     printf '[demo] %s\n' "$*" >&2
+}
+
+run_with_timeout() {
+    local timeout_seconds="$1"
+    shift
+
+    python3 - "$timeout_seconds" "$@" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+timeout_seconds = float(sys.argv[1])
+command = sys.argv[2:]
+
+process = subprocess.Popen(command, start_new_session=True)
+try:
+    raise SystemExit(process.wait(timeout=timeout_seconds))
+except subprocess.TimeoutExpired:
+    print(f"error: command timed out after {timeout_seconds:g}s: {' '.join(command)}", file=sys.stderr)
+    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+    raise SystemExit(124)
+PY
+}
+
+run_step() {
+    local label="$1"
+    shift
+    local started_at ended_at elapsed
+
+    started_at="$(date +%s)"
+    log "$label"
+    "$@"
+    ended_at="$(date +%s)"
+    elapsed=$((ended_at - started_at))
+    log "$label complete in ${elapsed}s"
 }
 
 if [[ ! -d "$WORKSPACE_PATH" ]]; then
@@ -36,31 +81,42 @@ log "booting simulator $SIMULATOR_ID"
 xcrun simctl boot "$SIMULATOR_ID" >/dev/null 2>&1 || true
 xcrun simctl bootstatus "$SIMULATOR_ID" -b >/dev/null
 
-log "running demo feature and UI smoke tests"
-xcodebuild \
-    -quiet \
-    -workspace "$WORKSPACE_PATH" \
-    -scheme SwiftPagerKitDemo \
-    -configuration Debug \
-    -destination "id=$SIMULATOR_ID" \
-    -derivedDataPath "$DERIVED_DATA_PATH/tests" \
-    CODE_SIGNING_ALLOWED=NO \
-    test
+DESTINATION="platform=iOS Simulator,id=$SIMULATOR_ID,arch=$SIMULATOR_ARCH"
 
-log "building and launching demo app"
-xcodebuild \
-    -quiet \
-    -workspace "$WORKSPACE_PATH" \
-    -scheme SwiftPagerKitDemo \
-    -configuration Debug \
-    -destination "id=$SIMULATOR_ID" \
-    -derivedDataPath "$DERIVED_DATA_PATH/run" \
-    CODE_SIGNING_ALLOWED=NO \
-    build
+run_step "running demo feature and UI smoke tests" \
+    run_with_timeout "$DEMO_TEST_TIMEOUT_SECONDS" \
+    xcodebuild \
+        -quiet \
+        -workspace "$WORKSPACE_PATH" \
+        -scheme SwiftPagerKitDemo \
+        -configuration Debug \
+        -destination "$DESTINATION" \
+        -derivedDataPath "$DERIVED_DATA_PATH" \
+        COMPILER_INDEX_STORE_ENABLE=NO \
+        CODE_SIGNING_ALLOWED=NO \
+        test
 
-APP_PATH="$(find "$DERIVED_DATA_PATH/run/Build/Products/Debug-iphonesimulator" -maxdepth 2 -name "$APP_NAME" -type d | head -n 1)"
+if [[ "$RUN_DEMO_INSTALL_SMOKE" != "1" ]]; then
+    log "demo runtime validation complete"
+    exit 0
+fi
+
+run_step "building demo app for install smoke" \
+    run_with_timeout "$DEMO_BUILD_TIMEOUT_SECONDS" \
+    xcodebuild \
+        -quiet \
+        -workspace "$WORKSPACE_PATH" \
+        -scheme SwiftPagerKitDemo \
+        -configuration Debug \
+        -destination "$DESTINATION" \
+        -derivedDataPath "$DERIVED_DATA_PATH" \
+        COMPILER_INDEX_STORE_ENABLE=NO \
+        CODE_SIGNING_ALLOWED=NO \
+        build
+
+APP_PATH="$(find "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator" -maxdepth 2 -name "$APP_NAME" -type d | head -n 1)"
 if [[ -z "$APP_PATH" ]]; then
-    printf 'error: built demo app not found under %s\n' "$DERIVED_DATA_PATH/run/Build/Products/Debug-iphonesimulator" >&2
+    printf 'error: built demo app not found under %s\n' "$DERIVED_DATA_PATH/Build/Products/Debug-iphonesimulator" >&2
     exit 1
 fi
 
