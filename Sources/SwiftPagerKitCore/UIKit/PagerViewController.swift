@@ -39,6 +39,9 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
     private var shouldDeferExternalUpdatesDuringApply = false
     private var isControllerNotificationScheduled = false
     private var controllerNotificationGeneration = 0
+    private var pendingPageLifecycleEvents: [PageLifecycleEvent] = []
+    private var isPageLifecycleNotificationScheduled = false
+    private var pageLifecycleNotificationGeneration = 0
     private var pendingPageCorrection: PendingPageCorrection?
     private var windowCenter: Int?
     private var windowDirectionBias: Int?
@@ -77,6 +80,11 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         var direction: SwiftPagerDirection
         var scrollPhase: SwiftPagerScrollPhase
         var pageSize: CGSize
+    }
+
+    private enum PageLifecycleEvent {
+        case willAttach(index: Int, action: (Int) -> Void)
+        case didDetach(index: Int, action: (Int) -> Void)
     }
 
     private var currentIndex: Int {
@@ -455,13 +463,14 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
     }
 
     private func updateScrollDirectionBehavior() {
+        scrollView.bounces = settings.bounces
         switch configuration.direction {
         case .horizontal:
-            scrollView.alwaysBounceHorizontal = dataSource.count > 1
+            scrollView.alwaysBounceHorizontal = settings.bounces && dataSource.count > 1
             scrollView.alwaysBounceVertical = false
         case .vertical:
             scrollView.alwaysBounceHorizontal = false
-            scrollView.alwaysBounceVertical = dataSource.count > 1
+            scrollView.alwaysBounceVertical = settings.bounces && dataSource.count > 1
         }
     }
 
@@ -486,7 +495,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
 
         for index in diff.toDetach {
             guard let host = attachedHostsByIndex.removeValue(forKey: index) else { continue }
-            host.detach()
+            detachHostFromLiveWindow(host)
 
             if retentionRange?.contains(index) == true {
                 host.prepareForRetention()
@@ -503,11 +512,9 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
             guard let item = dataSource.item(index) else { continue }
             let host = takeHost(for: item, content: content)
             host.index = index
-            host.attach(
+            attachHostToLiveWindow(
+                host,
                 to: self,
-                in: scrollView,
-                settings: settings,
-                direction: configuration.direction
             )
             host.updateSemanticContentAttribute(pageContentSemanticContentAttribute)
             attachedHostsByIndex[index] = host
@@ -520,6 +527,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
             guard let item = dataSource.item(index) else { continue }
             let previousID = host.id
             let previousReuseType = host.reuseType
+            let wasAttachedToScrollView = host.view.superview === scrollView
             host.bind(
                 item: item,
                 updatePolicy: configuration.contentUpdatePolicy,
@@ -528,11 +536,12 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
                 direction: configuration.direction,
                 content: content
             )
-            host.attach(
+            if wasAttachedToScrollView, host.view.superview !== scrollView {
+                notifyPageDidDetach(index)
+            }
+            attachHostToLiveWindow(
+                host,
                 to: self,
-                in: scrollView,
-                settings: settings,
-                direction: configuration.direction
             )
             host.updateSemanticContentAttribute(pageContentSemanticContentAttribute)
             if host.id != previousID || host.reuseType != previousReuseType {
@@ -620,7 +629,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
             }
 
         for host in attachedHostsByIndex.values where !preservedHosts.contains(ObjectIdentifier(host)) {
-            host.detach()
+            detachHostFromLiveWindow(host)
             reusePool.enqueue(host)
         }
 
@@ -670,6 +679,90 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
             direction: configuration.direction,
             content: content
         )
+    }
+
+    private func attachHostToLiveWindow(
+        _ host: PagerHost<Element, Content>,
+        to parent: UIViewController
+    ) {
+        let shouldNotifyAttach = host.view.superview !== scrollView
+        if shouldNotifyAttach {
+            notifyPageWillAttach(host.index)
+        }
+        host.attach(
+            to: parent,
+            in: scrollView,
+            settings: settings,
+            direction: configuration.direction
+        )
+    }
+
+    private func detachHostFromLiveWindow(_ host: PagerHost<Element, Content>) {
+        let shouldNotifyDetach = host.view.superview === scrollView
+        host.detach()
+        if shouldNotifyDetach {
+            notifyPageDidDetach(host.index)
+        }
+    }
+
+    private func discardAttachedHost(_ host: PagerHost<Element, Content>) {
+        let shouldNotifyDetach = host.view.superview === scrollView
+        host.discard()
+        if shouldNotifyDetach {
+            notifyPageDidDetach(host.index)
+        }
+    }
+
+    private func notifyPageWillAttach(_ index: Int) {
+        guard let action = settings.onPageWillAttach else { return }
+        notifyPageLifecycle(.willAttach(index: index, action: action))
+    }
+
+    private func notifyPageDidDetach(_ index: Int) {
+        guard let action = settings.onPageDidDetach else { return }
+        notifyPageLifecycle(.didDetach(index: index, action: action))
+    }
+
+    private func notifyPageLifecycle(_ event: PageLifecycleEvent) {
+        if shouldDeferExternalUpdatesDuringApply ||
+            isPageLifecycleNotificationScheduled ||
+            !pendingPageLifecycleEvents.isEmpty {
+            pendingPageLifecycleEvents.append(event)
+            scheduleDeferredPageLifecycleNotifications()
+        } else {
+            publishPageLifecycleEvent(event)
+        }
+    }
+
+    private func scheduleDeferredPageLifecycleNotifications() {
+        guard !isPageLifecycleNotificationScheduled else { return }
+
+        isPageLifecycleNotificationScheduled = true
+        let generation = pageLifecycleNotificationGeneration
+        DispatchQueue.main.async { [self] in
+            isPageLifecycleNotificationScheduled = false
+            guard pageLifecycleNotificationGeneration == generation else { return }
+            let events = pendingPageLifecycleEvents
+            pendingPageLifecycleEvents.removeAll()
+            for event in events {
+                publishPageLifecycleEvent(event)
+            }
+        }
+    }
+
+    private func invalidatePendingPageLifecycleNotifications() {
+        pageLifecycleNotificationGeneration += 1
+        pendingPageLifecycleEvents.removeAll()
+        isPageLifecycleNotificationScheduled = false
+    }
+
+    private func publishPageLifecycleEvent(_ event: PageLifecycleEvent) {
+        switch event {
+        case let .willAttach(index, action):
+            action(index)
+        case let .didDetach(index, action):
+            action(index)
+        }
     }
 
     private func retainHost(_ host: PagerHost<Element, Content>) {
@@ -1065,8 +1158,20 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         settings.continuousPageIndex != nil || settings.onContinuousPageChange != nil
     }
 
+    private var hasCoalescedContinuousPageObservers: Bool {
+        settings.continuousPageIndex != nil ||
+            (settings.onContinuousPageChange != nil && settings.coalescesContinuousPageChanges)
+    }
+
     private func scheduleContinuousPagePositionUpdate(_ pagePosition: CGFloat, force: Bool = false) {
         guard hasContinuousPageObservers else { return }
+        if !force,
+           !settings.coalescesContinuousPageChanges,
+           settings.onContinuousPageChange != nil {
+            settings.onContinuousPageChange?(pagePosition)
+        }
+
+        guard force || hasCoalescedContinuousPageObservers else { return }
         guard force || shouldPublishContinuousPagePosition(pagePosition) else { return }
 
         pendingContinuousPagePosition = pagePosition
@@ -1101,7 +1206,9 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
     private func publishContinuousPagePosition(_ pagePosition: CGFloat, force: Bool) {
         guard force || shouldPublishContinuousPagePosition(pagePosition) else { return }
 
-        settings.onContinuousPageChange?(pagePosition)
+        if force || settings.coalescesContinuousPageChanges {
+            settings.onContinuousPageChange?(pagePosition)
+        }
         if let position = settings.continuousPageIndex,
            abs(position.wrappedValue - pagePosition) > 0.0001 {
             position.wrappedValue = pagePosition
@@ -1201,7 +1308,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         pageCorrectionGeneration += 1
         loadMoreGeneration += 1
         for host in attachedHostsByIndex.values {
-            host.discard()
+            discardAttachedHost(host)
         }
         for host in retainedHostsByID.values {
             host.discard()
@@ -1244,10 +1351,14 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         scrollView.delegate = nil
         controllerNotificationGeneration += 1
         isControllerNotificationScheduled = false
+        invalidatePendingPageLifecycleNotifications()
         accessibilityControl.accessibilityIncrementAction = nil
         accessibilityControl.accessibilityDecrementAction = nil
         accessibilityControl.accessibilityScrollAction = nil
+        let previousShouldDeferExternalUpdates = shouldDeferExternalUpdatesDuringApply
+        shouldDeferExternalUpdatesDuringApply = true
         removeAllHosts()
+        shouldDeferExternalUpdatesDuringApply = previousShouldDeferExternalUpdates
         localReusePool.removeAll()
         dataSource = .empty
         page = nil

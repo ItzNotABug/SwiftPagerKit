@@ -59,6 +59,66 @@ struct PagerViewControllerBehaviorTests {
     }
 
     @Test
+    func horizontalPagerCanDisableBoundaryBounce() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        settings.bounces = false
+
+        controller.apply(
+            dataSource: dataSource(count: 3),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(),
+            content: { Text("\($0)") }
+        )
+
+        #expect(scrollView.bounces == false)
+        #expect(scrollView.alwaysBounceHorizontal == false)
+        #expect(scrollView.alwaysBounceVertical == false)
+    }
+
+    @Test
+    func verticalPagerCanDisableBoundaryBounce() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        settings.bounces = false
+
+        controller.apply(
+            dataSource: dataSource(count: 3),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(direction: .vertical),
+            content: { Text("\($0)") }
+        )
+
+        #expect(scrollView.bounces == false)
+        #expect(scrollView.alwaysBounceHorizontal == false)
+        #expect(scrollView.alwaysBounceVertical == false)
+    }
+
+    @Test
+    func pagerBouncesByDefaultWhenMultiplePagesAreAvailable() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+
+        controller.apply(
+            dataSource: dataSource(count: 3),
+            page: box.binding,
+            configuration: SwiftPagerConfiguration(),
+            content: { Text("\($0)") }
+        )
+
+        #expect(scrollView.bounces)
+        #expect(scrollView.alwaysBounceHorizontal)
+        #expect(scrollView.alwaysBounceVertical == false)
+    }
+
+    @Test
     func scrollViewPublishesAccessiblePageValue() throws {
         let box = PageBox(1)
         let controller = makeController()
@@ -1010,6 +1070,31 @@ struct PagerViewControllerBehaviorTests {
     }
 
     @Test
+    func continuousPageChangeCanPublishEveryScrollTickWithoutCoalescing() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var positions: [CGFloat] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.coalescesContinuousPageChanges = false
+        settings.onContinuousPageChange = { positions.append($0) }
+
+        controller.apply(
+            dataSource: dataSource(count: 4),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(),
+            content: { Text("\($0)") }
+        )
+
+        scrollView.contentOffset = CGPoint(x: 0.4, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        let expectedPosition = scrollView.contentOffset.x / scrollView.bounds.width
+        #expect(abs((positions.last ?? -1) - expectedPosition) < 0.0001)
+    }
+
+    @Test
     func pendingContinuousPageChangeIsCancelledByTeardown() async throws {
         let box = PageBox(0)
         let controller = makeController()
@@ -1609,6 +1694,182 @@ struct PagerViewControllerBehaviorTests {
 
         #expect(didDismiss)
         #expect(container.transform == .identity)
+    }
+
+    @Test
+    func pageLifecycleCallbacksFireWhenPagesEnterAndLeaveLiveWindow() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var events: [String] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.onPageWillAttach = { events.append("attach:\($0)") }
+        settings.onPageDidDetach = { events.append("detach:\($0)") }
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0),
+            content: { Text("\($0)") }
+        )
+
+        #expect(events == ["attach:0", "attach:1"])
+
+        events.removeAll()
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(events == ["detach:0", "attach:2", "attach:3"])
+    }
+
+    @Test
+    func pageLifecycleCallbacksDeferDuringSwiftUIApply() async throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        var events: [String] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.onPageWillAttach = { events.append("attach:\($0)") }
+        settings.onPageDidDetach = { events.append("detach:\($0)") }
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0),
+            content: { Text("\($0)") },
+            deferExternalUpdates: true
+        )
+
+        #expect(events.isEmpty)
+
+        await waitUntil {
+            events == ["attach:0", "attach:1"]
+        }
+
+        #expect(events == ["attach:0", "attach:1"])
+    }
+
+    @Test
+    func pageLifecycleCallbacksDeferDuringTeardown() async throws {
+        let box = PageBox(0)
+        var controller: PagerViewController<Int, Text>? = makeController()
+        var events: [String] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.onPageWillAttach = { events.append("attach:\($0)") }
+        settings.onPageDidDetach = { events.append("detach:\($0)") }
+
+        controller?.apply(
+            dataSource: dataSource(count: 3),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0),
+            content: { Text("\($0)") }
+        )
+
+        events.removeAll()
+        controller?.teardown()
+        controller = nil
+
+        #expect(events.isEmpty)
+
+        await waitUntil {
+            events.contains("detach:0") && events.contains("detach:1")
+        }
+
+        #expect(events.filter { $0.hasPrefix("detach:") }.count == 2)
+    }
+
+    @Test
+    func pageLifecycleCallbacksStayBalancedWhenLiveHostWrapperChanges() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        var events: [String] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.onPageWillAttach = { events.append("attach:\($0)") }
+        settings.onPageDidDetach = { events.append("detach:\($0)") }
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0)
+
+        controller.apply(
+            dataSource: dataSource(count: 2),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        events.removeAll()
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+        controller.apply(
+            dataSource: dataSource(count: 2),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        #expect(events.filter { $0 == "detach:0" }.count == 1)
+        #expect(events.filter { $0 == "attach:0" }.count == 1)
+        #expect(events.filter { $0 == "detach:1" }.count == 1)
+        #expect(events.filter { $0 == "attach:1" }.count == 1)
+    }
+
+    @Test
+    func pageLifecycleCallbacksFireWhenRetainedPageReattaches() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var events: [String] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.onPageWillAttach = { events.append("attach:\($0)") }
+        settings.onPageDidDetach = { events.append("detach:\($0)") }
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 2)
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        events.removeAll()
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        #expect(events.contains("detach:0"))
+
+        events.removeAll()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(events.contains("attach:0"))
+    }
+
+    @Test
+    func pageLifecycleCallbacksFireWhenReusableHostReattaches() throws {
+        let box = PageBox(2)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var events: [String] = []
+        var settings = SwiftPagerSettings<Int>()
+        settings.onPageWillAttach = { events.append("attach:\($0)") }
+        settings.onPageDidDetach = { events.append("detach:\($0)") }
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0, reusePoolLimit: 2)
+
+        controller.apply(
+            dataSource: dataSource(count: 4),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        events.removeAll()
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(events.contains("detach:2"))
+        #expect(events.contains("attach:0"))
     }
 
     @Test

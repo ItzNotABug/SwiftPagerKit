@@ -62,6 +62,8 @@ public struct SwiftPagerSettings<Element> {
     public var onLoadMore: (() -> Void)?
     /// Page scroll axis.
     public var direction: SwiftPagerDirection
+    /// Whether the outer paging scroll view may rubber-band at the data boundaries.
+    public var bounces: Bool
     /// Called when the user overscrolls beyond either data boundary.
     public var onOverscroll: ((SwiftPagerBoundary) -> Void)?
     /// Optional binding updated with the continuous fractional page index.
@@ -71,6 +73,12 @@ public struct SwiftPagerSettings<Element> {
     /// Prefer this over `continuousPageIndex` when the value is used for local
     /// drawing or logging and does not need to drive SwiftUI state.
     public var onContinuousPageChange: ((CGFloat) -> Void)?
+    /// Whether continuous page-change callbacks are coalesced onto the next main-queue turn.
+    public var coalescesContinuousPageChanges: Bool
+    /// Called before a page host view is added; may be deferred until after SwiftUI updates.
+    public var onPageWillAttach: ((Int) -> Void)?
+    /// Called after a page host view is removed; may be deferred until after SwiftUI updates.
+    public var onPageDidDetach: ((Int) -> Void)?
     /// Per-element zoom configuration.
     public var zoomConfiguration: (Element) -> SwiftPagerZoomConfiguration
     /// Called whenever a zoomable page reports a zoom-scale change.
@@ -115,9 +123,13 @@ public struct SwiftPagerSettings<Element> {
         self.loadMoreTrigger = .nearEnd(offsetFromEnd: 3)
         self.onLoadMore = nil
         self.direction = direction
+        self.bounces = true
         self.onOverscroll = nil
         self.continuousPageIndex = nil
         self.onContinuousPageChange = nil
+        self.coalescesContinuousPageChanges = true
+        self.onPageWillAttach = nil
+        self.onPageDidDetach = nil
         self.zoomConfiguration = { _ in .disabled }
         self.onZoomChange = nil
         self.accessibilityLabel = "Pager"

@@ -225,6 +225,13 @@ public struct SwiftPager<Element, DataCollection: RandomAccessCollection, Conten
         return copy
     }
 
+    /// Enables or disables scroll-view rubber-banding at the first and last page.
+    public func bounces(_ enabled: Bool) -> Self {
+        var copy = self
+        copy.settings.bounces = enabled
+        return copy
+    }
+
     /// Sets the accessibility label for the adjustable pager control.
     public func pagerAccessibilityLabel(_ label: String) -> Self {
         var copy = self
@@ -355,8 +362,31 @@ public struct SwiftPager<Element, DataCollection: RandomAccessCollection, Conten
     /// This callback does not write SwiftUI state by itself. Use it for lightweight
     /// progress work that should avoid the extra invalidation cost of a binding.
     public func onContinuousPageChange(_ action: @escaping (CGFloat) -> Void) -> Self {
+        onContinuousPageChange(coalesced: true, action)
+    }
+
+    /// Runs with optional coalescing for scroll-linked visuals.
+    ///
+    /// Passing `false` publishes scroll-tick updates synchronously. Forced
+    /// apply/settle updates may still defer to avoid SwiftUI update-cycle writes.
+    public func onContinuousPageChange(coalesced: Bool, _ action: @escaping (CGFloat) -> Void) -> Self {
         var copy = self
         copy.settings.onContinuousPageChange = action
+        copy.settings.coalescesContinuousPageChanges = coalesced
+        return copy
+    }
+
+    /// Runs before a page host enters the live attached window.
+    public func onPageWillAttach(_ action: @escaping (Int) -> Void) -> Self {
+        var copy = self
+        copy.settings.onPageWillAttach = action
+        return copy
+    }
+
+    /// Runs after a page host leaves the live attached window.
+    public func onPageDidDetach(_ action: @escaping (Int) -> Void) -> Self {
+        var copy = self
+        copy.settings.onPageDidDetach = action
         return copy
     }
 
