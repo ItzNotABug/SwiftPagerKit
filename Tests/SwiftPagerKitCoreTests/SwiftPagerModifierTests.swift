@@ -137,6 +137,18 @@ struct SwiftPagerModifierTests {
     }
 
     @Test
+    func bounceModifierAppliesSettings() throws {
+        let pager = SwiftPager(Array(0..<3)) { value in
+            Text("\(value)")
+        }
+        .bounces(false)
+
+        let settings = try pagerSettings(in: pager)
+
+        #expect(settings.bounces == false)
+    }
+
+    @Test
     func accessibilityModifiersApplySettings() throws {
         let pager = SwiftPager(Array(0..<3)) { value in
             Text("\(value)")
@@ -166,6 +178,41 @@ struct SwiftPagerModifierTests {
         settings.onContinuousPageChange?(1.25)
 
         #expect(reportedPosition == 1.25)
+    }
+
+    @Test
+    func continuousPageChangeModifierCanDisableCoalescing() throws {
+        let pager = SwiftPager(Array(0..<3)) { value in
+            Text("\(value)")
+        }
+        .onContinuousPageChange(coalesced: false) { _ in }
+
+        let settings = try pagerSettings(in: pager)
+
+        #expect(settings.onContinuousPageChange != nil)
+        #expect(settings.coalescesContinuousPageChanges == false)
+    }
+
+    @Test
+    func pageLifecycleModifiersApplySettings() throws {
+        var didAttachIndex: Int?
+        var didDetachIndex: Int?
+        let pager = SwiftPager(Array(0..<3)) { value in
+            Text("\(value)")
+        }
+        .onPageWillAttach { index in
+            didAttachIndex = index
+        }
+        .onPageDidDetach { index in
+            didDetachIndex = index
+        }
+
+        let settings = try pagerSettings(in: pager)
+        settings.onPageWillAttach?(1)
+        settings.onPageDidDetach?(2)
+
+        #expect(didAttachIndex == 1)
+        #expect(didDetachIndex == 2)
     }
 
     @Test

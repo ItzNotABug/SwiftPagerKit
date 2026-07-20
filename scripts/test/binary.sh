@@ -166,6 +166,7 @@ public struct BinaryConsumerProbe: View {
                 Text("\(value)")
             }
             .controller(pager)
+            .bounces(false)
             .reusePool(sharedPool)
             .cachePolicy(.balanced)
             .reusePoolLimit(4)
@@ -187,8 +188,17 @@ public struct BinaryConsumerProbe: View {
             .onContinuousPageChange { position in
                 _ = position
             }
+            .onContinuousPageChange(coalesced: false) { position in
+                _ = position
+            }
             .onPageChange { page in
                 _ = page
+            }
+            .onPageWillAttach { index in
+                _ = index
+            }
+            .onPageDidDetach { index in
+                _ = index
             }
             .onStateChange { state in
                 _ = state.currentPage
@@ -229,7 +239,11 @@ public struct BinaryConsumerProbe: View {
             }
             .continuousPageIndex($continuousIndex)
             .configureSettings { config in
+                config.bounces = false
+                config.coalescesContinuousPageChanges = false
                 config.dismissVelocity = 1.3
+                config.onPageWillAttach = { _ in }
+                config.onPageDidDetach = { _ in }
             }
             .background(PagerClearBackground())
         }
