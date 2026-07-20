@@ -13,9 +13,15 @@ on:
       - opened
       - synchronize
       - reopened
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE.md
   push:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE.md
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
