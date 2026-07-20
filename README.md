@@ -23,7 +23,7 @@
 ## Install
 
 ```swift
-.package(url: "https://github.com/ItzNotABug/SwiftPagerKit.git", from: "0.1.0")
+.package(url: "https://github.com/ItzNotABug/SwiftPagerKit.git", from: "0.1.1")
 ```
 
 Add `SwiftPagerKit` to your app target and import the public module:
@@ -70,6 +70,7 @@ SwiftPager(items, id: \.id, reuseType: \.kind, page: $page) { item in
 }
 .direction(.horizontal)
 .pageSpacing(12)
+.bounces(false)
 .preloadDistance(1)
 .retentionDistance(2)
 .contentRefreshToken(version)
@@ -94,10 +95,16 @@ SwiftPager(items, id: \.id, reuseType: \.kind, page: $page) { item in
 .onStateChange { state in
     print(state.scrollPhase)
 }
-.onContinuousPageChange { position in
+.onContinuousPageChange(coalesced: false) { position in
     print(position)
 }
 .continuousPageIndex($position)
+.onPageWillAttach { index in
+    print("Attach", index)
+}
+.onPageDidDetach { index in
+    print("Detach", index)
+}
 .pagerAccessibilityLabel("Gallery")
 ```
 
