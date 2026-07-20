@@ -11,14 +11,7 @@ REMOTE_MANIFEST_TEMPLATE="$PACKAGE_DIR/scripts/build/Package.swift.template"
 ARTIFACT_ZIP="$PACKAGE_DIR/.build/xcframework/output/SwiftPagerKitCore.xcframework.zip"
 CONSUMER_ARTIFACT_ZIP="$CONSUMER_DIR/SwiftPagerKitCore.xcframework.zip"
 REMOTE_ARTIFACT_ZIP="$REMOTE_CONSUMER_DIR/SwiftPagerKitCore.xcframework.zip"
-DEFAULT_DERIVED_DATA_ROOT="$BUILD_DIR/derived-data"
-if [[ -n "${SWIFTPAGERKIT_DERIVED_DATA_ROOT:-}" ]]; then
-    DEFAULT_DERIVED_DATA_ROOT="$SWIFTPAGERKIT_DERIVED_DATA_ROOT/validation"
-fi
-DERIVED_DATA_ROOT="${SWIFTPAGERKIT_VALIDATION_DERIVED_DATA_ROOT:-$DEFAULT_DERIVED_DATA_ROOT}"
-SOURCE_PACKAGES_DIR="${SWIFTPAGERKIT_SOURCE_PACKAGES_DIR:-}"
 SIMULATOR_ID="${SIMULATOR_ID:-}"
-SIMULATOR_ARCH="${SIMULATOR_ARCH:-$(uname -m)}"
 REQUIRE_REMOTE_BINARY_MANIFEST="${REQUIRE_REMOTE_BINARY_MANIFEST:-0}"
 
 log() {
@@ -47,13 +40,6 @@ fi
 rm -rf "$BUILD_DIR"
 mkdir -p "$CONSUMER_DIR/Sources/SwiftPagerKit" "$CONSUMER_DIR/Sources/BinaryConsumerProbe" "$REMOTE_CONSUMER_DIR"
 
-xcodebuild_package_args=()
-if [[ -n "$SOURCE_PACKAGES_DIR" ]]; then
-    mkdir -p "$SOURCE_PACKAGES_DIR"
-    xcodebuild_package_args=(-clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR")
-fi
-mkdir -p "$DERIVED_DATA_ROOT"
-
 if [[ -z "$SIMULATOR_ID" ]]; then
     SIMULATOR_ID="$("$PACKAGE_DIR/scripts/test/simulator.sh")"
 fi
@@ -67,13 +53,11 @@ log "building source package for iOS Simulator"
 (
     cd "$PACKAGE_DIR"
     xcodebuild \
-        "${xcodebuild_package_args[@]}" \
         -quiet \
         -scheme SwiftPagerKit \
         -configuration Release \
         -destination 'generic/platform=iOS Simulator' \
-        -derivedDataPath "$DERIVED_DATA_ROOT/source" \
-        COMPILER_INDEX_STORE_ENABLE=NO \
+        -derivedDataPath "$BUILD_DIR/source-derived-data" \
         CODE_SIGNING_ALLOWED=NO \
         build
 )
@@ -82,13 +66,11 @@ log "running UIKit behavior tests on iOS Simulator"
 (
     cd "$PACKAGE_DIR"
     xcodebuild \
-        "${xcodebuild_package_args[@]}" \
         -quiet \
         -scheme SwiftPagerKit \
         -configuration Debug \
-        -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$SIMULATOR_ARCH" \
-        -derivedDataPath "$DERIVED_DATA_ROOT/tests" \
-        COMPILER_INDEX_STORE_ENABLE=NO \
+        -destination "id=$SIMULATOR_ID" \
+        -derivedDataPath "$BUILD_DIR/test-derived-data" \
         CODE_SIGNING_ALLOWED=NO \
         test
 )
@@ -291,13 +273,11 @@ log "building binary consumer against local artifact"
 (
     cd "$CONSUMER_DIR"
     xcodebuild \
-        "${xcodebuild_package_args[@]}" \
         -quiet \
         -scheme BinaryConsumer \
         -configuration Release \
         -destination 'generic/platform=iOS Simulator' \
-        -derivedDataPath "$DERIVED_DATA_ROOT/binary-consumer" \
-        COMPILER_INDEX_STORE_ENABLE=NO \
+        -derivedDataPath "$BUILD_DIR/binary-consumer-derived-data" \
         CODE_SIGNING_ALLOWED=NO \
         build
 )
@@ -345,13 +325,11 @@ EOF
     (
         cd "$REMOTE_CONSUMER_DIR"
         xcodebuild \
-            "${xcodebuild_package_args[@]}" \
             -quiet \
             -scheme RemoteBinaryConsumer \
             -configuration Release \
             -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$DERIVED_DATA_ROOT/remote-binary-consumer" \
-            COMPILER_INDEX_STORE_ENABLE=NO \
+            -derivedDataPath "$BUILD_DIR/remote-binary-consumer-derived-data" \
             CODE_SIGNING_ALLOWED=NO \
             build
     )
