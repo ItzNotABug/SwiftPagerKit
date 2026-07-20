@@ -93,6 +93,19 @@ jobs:
               echo "BINARY_ARTIFACT_NAME=SwiftPagerKitCore.xcframework.zip"
           } >> "$GITHUB_ENV"
 
+      - name: Resolve Previous Release Tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREVIOUS_RELEASE_TAG="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')"
+
+          if [[ -n "$PREVIOUS_RELEASE_TAG" ]]; then
+              echo "PREVIOUS_RELEASE_TAG=$PREVIOUS_RELEASE_TAG" >> "$GITHUB_ENV"
+              printf 'release notes will compare %s...%s\n' "$PREVIOUS_RELEASE_TAG" "$RELEASE_VERSION"
+          else
+              printf 'no previous release tag found; release notes will start at %s\n' "$RELEASE_VERSION"
+          fi
+
       - name: Resolve iOS Simulator
         run: echo "SIMULATOR_ID=$(scripts/test/simulator.sh)" >> "$GITHUB_ENV"
 
@@ -169,6 +182,10 @@ jobs:
 
           if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
               RELEASE_FLAGS+=(--prerelease)
+          fi
+
+          if [[ -n "${PREVIOUS_RELEASE_TAG:-}" ]]; then
+              RELEASE_FLAGS+=(--notes-start-tag "$PREVIOUS_RELEASE_TAG")
           fi
 
           gh release create "$RELEASE_VERSION" \
