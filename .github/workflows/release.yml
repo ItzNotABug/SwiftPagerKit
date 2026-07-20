@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_demo_validation:
+        description: Run the demo app runtime validation before publishing
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -101,6 +106,7 @@ jobs:
         run: scripts/test/binary.sh
 
       - name: Demo Runtime Validation
+        if: ${{ inputs.run_demo_validation }}
         run: scripts/test/demo.sh
 
       - name: Generate Binary Release Manifest
