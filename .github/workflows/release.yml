@@ -145,7 +145,7 @@ jobs:
           fi
 
           git commit -m "Release $RELEASE_VERSION binary manifest"
-          git tag -a "$RELEASE_VERSION" -m "SwiftPagerKit $RELEASE_VERSION"
+          git tag -a "$RELEASE_VERSION" -m "$RELEASE_VERSION"
           git push origin "refs/tags/$RELEASE_VERSION"
 
           echo "RELEASE_TAG_CREATED=1" >> "$GITHUB_ENV"
@@ -157,7 +157,7 @@ jobs:
         run: |
           RELEASE_FLAGS=(
               --verify-tag
-              --title "SwiftPagerKit $RELEASE_VERSION"
+              --title "$RELEASE_VERSION"
               --generate-notes
           )
 

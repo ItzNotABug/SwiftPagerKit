@@ -13,15 +13,37 @@ on:
       - opened
       - synchronize
       - reopened
-    paths-ignore:
-      - '**/*.md'
-      - LICENSE.md
+    paths:
+      - Package*.swift
+      - Sources/**
+      - Tests/**
+      - scripts/**
+      - Examples/SwiftPagerKitDemo/Config/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemo.xcodeproj/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemo.xcworkspace/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemo/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Package.swift
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Sources/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Tests/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoUITests/**
+      - .github/workflows/ci.yml
   push:
     branches:
       - main
-    paths-ignore:
-      - '**/*.md'
-      - LICENSE.md
+    paths:
+      - Package*.swift
+      - Sources/**
+      - Tests/**
+      - scripts/**
+      - Examples/SwiftPagerKitDemo/Config/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemo.xcodeproj/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemo.xcworkspace/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemo/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Package.swift
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Sources/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoPackage/Tests/**
+      - Examples/SwiftPagerKitDemo/SwiftPagerKitDemoUITests/**
+      - .github/workflows/ci.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
