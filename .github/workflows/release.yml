@@ -1,10 +1,10 @@
-name: Release
+name: Publish Release
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version tag, for example 0.1.0
+        description: Release version, for example 0.1.0
         required: true
         type: string
       prerelease:
@@ -64,16 +64,22 @@ jobs:
 
       - name: Validate Release Input
         env:
-          INPUT_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION_INPUT: ${{ inputs.version }}
         run: |
-          VERSION="$INPUT_VERSION"
+          VERSION="$RELEASE_VERSION_INPUT"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
               printf 'error: version must look like 0.1.0 or 0.1.0-preview.1\n' >&2
               exit 1
           fi
 
           if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
-              printf 'error: tag %s already exists\n' "$VERSION" >&2
+              printf 'error: release tag %s already exists\n' "$VERSION" >&2
+              exit 1
+          fi
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+              printf 'error: GitHub release %s already exists\n' "$VERSION" >&2
               exit 1
           fi
 
@@ -111,16 +117,6 @@ jobs:
               echo "RELEASE_ARTIFACT_URL=$RELEASE_URL"
           } >> "$GITHUB_ENV"
 
-          cat > .build/release/notes.md <<EOF
-          SwiftPagerKit $RELEASE_VERSION
-
-          SwiftPM binary artifact:
-          $RELEASE_URL
-
-          Checksum:
-          $CHECKSUM
-          EOF
-
       - name: Create Binary Manifest Tag
         run: |
           cp "$RELEASE_MANIFEST_PATH" Package.swift
@@ -139,6 +135,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "release/$RELEASE_VERSION-binary-manifest"
           git add Package.swift
 
           STAGED_FILES="$(git diff --cached --name-only)"
@@ -150,25 +147,29 @@ jobs:
           git commit -m "Release $RELEASE_VERSION binary manifest"
           git tag -a "$RELEASE_VERSION" -m "SwiftPagerKit $RELEASE_VERSION"
           git push origin "refs/tags/$RELEASE_VERSION"
-          mkdir -p .build/release
-          touch .build/release/tag-pushed
 
-      - name: Publish GitHub Release
+          echo "RELEASE_TAG_CREATED=1" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          RELEASE_PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          release_flags=()
-          if [[ "$INPUT_PRERELEASE" == "true" ]]; then
-              release_flags+=(--prerelease)
+          RELEASE_FLAGS=(
+              --verify-tag
+              --title "SwiftPagerKit $RELEASE_VERSION"
+              --generate-notes
+          )
+
+          if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+              RELEASE_FLAGS+=(--prerelease)
           fi
 
           gh release create "$RELEASE_VERSION" \
               "$ARTIFACT_PATH#$BINARY_ARTIFACT_NAME" \
-              --title "SwiftPagerKit $RELEASE_VERSION" \
-              --notes-file .build/release/notes.md \
-              --verify-tag \
-              "${release_flags[@]}"
+              "${RELEASE_FLAGS[@]}"
+
+          echo "RELEASE_CREATED=1" >> "$GITHUB_ENV"
 
       - name: Verify Uploaded Binary Release
         run: |
@@ -244,9 +245,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ -z "${RELEASE_VERSION:-}" || ! -f .build/release/tag-pushed ]]; then
+          if [[ -z "${RELEASE_VERSION:-}" ]]; then
               exit 0
           fi
 
-          gh release delete "$RELEASE_VERSION" --yes --cleanup-tag >/dev/null 2>&1 || true
-          git push origin ":refs/tags/$RELEASE_VERSION" >/dev/null 2>&1 || true
+          if [[ "${RELEASE_CREATED:-0}" == "1" ]]; then
+              gh release delete "$RELEASE_VERSION" --yes --cleanup-tag >/dev/null 2>&1 || true
+          fi
+
+          if [[ "${RELEASE_TAG_CREATED:-0}" == "1" ]]; then
+              git push origin ":refs/tags/$RELEASE_VERSION" >/dev/null 2>&1 || true
+          fi
