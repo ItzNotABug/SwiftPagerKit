@@ -32,6 +32,9 @@ jobs:
     name: Validate Package
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      SWIFTPAGERKIT_DERIVED_DATA_ROOT: ${{ github.workspace }}/.build/xcode-cache/DerivedData
+      SWIFTPAGERKIT_SOURCE_PACKAGES_DIR: ${{ github.workspace }}/.build/xcode-cache/SourcePackages
 
     steps:
       - name: Checkout
@@ -58,6 +61,27 @@ jobs:
 
       - name: Show Xcode Version
         run: xcodebuild -version
+
+      - name: Export Xcode Cache Version
+        run: echo "XCODE_CACHE_VERSION=xcode-$(xcodebuild -version | awk 'NR == 1 { print $2 }')" >> "$GITHUB_ENV"
+
+      - name: Restore Xcode Build Cache
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-cache-${{ runner.os }}-${{ env.XCODE_CACHE_VERSION }}-${{ github.workflow }}-${{ github.sha }}
+          restore-keys: |
+            xcode-cache-${{ runner.os }}-${{ env.XCODE_CACHE_VERSION }}-${{ github.workflow }}-
+            xcode-cache-${{ runner.os }}-${{ env.XCODE_CACHE_VERSION }}-
+          deriveddata-directory: ${{ env.SWIFTPAGERKIT_DERIVED_DATA_ROOT }}
+          sourcepackages-directory: ${{ env.SWIFTPAGERKIT_SOURCE_PACKAGES_DIR }}
+          restore-mtime-targets: |
+            .github/**/*
+            Examples/**/*
+            Package.swift
+            Package.binary.swift
+            Sources/**/*
+            Tests/**/*
+            scripts/**/*
 
       - name: Resolve iOS Simulator
         run: echo "SIMULATOR_ID=$(scripts/test/simulator.sh)" >> "$GITHUB_ENV"

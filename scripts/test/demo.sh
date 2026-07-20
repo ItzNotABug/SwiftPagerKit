@@ -4,7 +4,12 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 PACKAGE_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 WORKSPACE_PATH="$PACKAGE_DIR/Examples/SwiftPagerKitDemo/SwiftPagerKitDemo.xcworkspace"
-DERIVED_DATA_PATH="$PACKAGE_DIR/.build/demo"
+DEFAULT_DERIVED_DATA_PATH="$PACKAGE_DIR/.build/demo"
+if [[ -n "${SWIFTPAGERKIT_DERIVED_DATA_ROOT:-}" ]]; then
+    DEFAULT_DERIVED_DATA_PATH="$SWIFTPAGERKIT_DERIVED_DATA_ROOT/demo"
+fi
+DERIVED_DATA_PATH="${SWIFTPAGERKIT_DEMO_DERIVED_DATA_PATH:-$DEFAULT_DERIVED_DATA_PATH}"
+SOURCE_PACKAGES_DIR="${SWIFTPAGERKIT_SOURCE_PACKAGES_DIR:-}"
 SIMULATOR_ID="${SIMULATOR_ID:-}"
 SIMULATOR_NAME="${SIMULATOR_NAME:-}"
 SIMULATOR_ARCH="${SIMULATOR_ARCH:-$(uname -m)}"
@@ -64,6 +69,13 @@ if [[ ! -d "$WORKSPACE_PATH" ]]; then
     exit 1
 fi
 
+xcodebuild_package_args=()
+if [[ -n "$SOURCE_PACKAGES_DIR" ]]; then
+    mkdir -p "$SOURCE_PACKAGES_DIR"
+    xcodebuild_package_args=(-clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR")
+fi
+mkdir -p "$DERIVED_DATA_PATH"
+
 if [[ -z "$SIMULATOR_ID" && -n "$SIMULATOR_NAME" ]]; then
     SIMULATOR_ID="$(xcrun simctl list devices available | awk -F '[()]' -v name="$SIMULATOR_NAME" '$0 ~ name { print $2; exit }')"
 fi
@@ -86,6 +98,7 @@ DESTINATION="platform=iOS Simulator,id=$SIMULATOR_ID,arch=$SIMULATOR_ARCH"
 run_step "running demo feature and UI smoke tests" \
     run_with_timeout "$DEMO_TEST_TIMEOUT_SECONDS" \
     xcodebuild \
+        "${xcodebuild_package_args[@]}" \
         -quiet \
         -workspace "$WORKSPACE_PATH" \
         -scheme SwiftPagerKitDemo \
@@ -104,6 +117,7 @@ fi
 run_step "building demo app for install smoke" \
     run_with_timeout "$DEMO_BUILD_TIMEOUT_SECONDS" \
     xcodebuild \
+        "${xcodebuild_package_args[@]}" \
         -quiet \
         -workspace "$WORKSPACE_PATH" \
         -scheme SwiftPagerKitDemo \

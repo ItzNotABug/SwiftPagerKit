@@ -5,7 +5,6 @@
 [![SwiftPM](https://img.shields.io/badge/SwiftPM-supported-brightgreen?style=flat)](https://www.swift.org/package-manager/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green?style=flat)](LICENSE.md)
 [![Binary](https://img.shields.io/badge/XCFramework-ready-informational?style=flat)](Package.binary.swift)
-![Status](https://img.shields.io/badge/status-public--preview-yellow?style=flat)
 ![Improved with Codex](https://img.shields.io/badge/Improved%20with-Codex-2F80ED?style=flat)
 
 `SwiftPagerKit` is a SwiftUI pager backed by a UIKit paging engine. It is designed for media-heavy screens that need stable identity, bounded reuse, programmatic control, zoom, and interactive dismissal.

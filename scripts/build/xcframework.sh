@@ -8,15 +8,26 @@ WORK_DIR="${SWIFTPAGERKIT_XCFRAMEWORK_WORK_DIR:-/tmp/swiftpagerkit-xcframework}"
 ARCHIVES_DIR="$WORK_DIR/archives"
 OUTPUT_DIR="$BUILD_DIR/output"
 BUILD_PACKAGE_DIR="$WORK_DIR/package"
-DERIVED_DATA_DIR="$WORK_DIR/DerivedData"
+DEFAULT_DERIVED_DATA_DIR="$WORK_DIR/DerivedData"
+if [[ -n "${SWIFTPAGERKIT_DERIVED_DATA_ROOT:-}" ]]; then
+    DEFAULT_DERIVED_DATA_DIR="$SWIFTPAGERKIT_DERIVED_DATA_ROOT/xcframework"
+fi
+DERIVED_DATA_DIR="${SWIFTPAGERKIT_XCFRAMEWORK_DERIVED_DATA_DIR:-$DEFAULT_DERIVED_DATA_DIR}"
+SOURCE_PACKAGES_DIR="${SWIFTPAGERKIT_SOURCE_PACKAGES_DIR:-}"
 
 SCHEME="${SCHEME:-SwiftPagerKitCore}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 INCLUDE_DEBUG_SYMBOLS="${SWIFTPAGERKIT_INCLUDE_DEBUG_SYMBOLS:-0}"
 
 rm -rf "$BUILD_DIR" "$WORK_DIR"
-mkdir -p "$ARCHIVES_DIR" "$OUTPUT_DIR" "$BUILD_PACKAGE_DIR"
+mkdir -p "$ARCHIVES_DIR" "$OUTPUT_DIR" "$BUILD_PACKAGE_DIR" "$DERIVED_DATA_DIR"
 trap 'rm -rf "$WORK_DIR"' EXIT
+
+xcodebuild_package_args=()
+if [[ -n "$SOURCE_PACKAGES_DIR" ]]; then
+    mkdir -p "$SOURCE_PACKAGES_DIR"
+    xcodebuild_package_args=(-clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR")
+fi
 
 cp -R "$PACKAGE_DIR/Sources" "$BUILD_PACKAGE_DIR/Sources"
 cat > "$BUILD_PACKAGE_DIR/Package.swift" <<'EOF'
@@ -59,7 +70,7 @@ archive() {
         generate_debug_symbols="YES"
     fi
 
-    xcodebuild archive \
+    xcodebuild "${xcodebuild_package_args[@]}" archive \
         -quiet \
         -scheme "$SCHEME" \
         -configuration "$CONFIGURATION" \
@@ -67,6 +78,7 @@ archive() {
         -archivePath "$archive_path" \
         -derivedDataPath "$DERIVED_DATA_DIR" \
         BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+        COMPILER_INDEX_STORE_ENABLE=NO \
         DEBUG_INFORMATION_FORMAT="$debug_information_format" \
         GCC_GENERATE_DEBUGGING_SYMBOLS="$generate_debug_symbols" \
         OTHER_SWIFT_FLAGS="$swift_flags" \
