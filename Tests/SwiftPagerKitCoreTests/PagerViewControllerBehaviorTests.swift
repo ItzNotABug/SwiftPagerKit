@@ -678,6 +678,40 @@ struct PagerViewControllerBehaviorTests {
     }
 
     @Test
+    func directionalScrollPrewarmsNewlyAttachedAheadPageLayout() throws {
+        let box = PageBox(0)
+        let recorder = LayoutPassRecorder()
+        let controller = makeController(contentType: LayoutProbePage.self)
+        let scrollView = try pagerScrollView(in: controller)
+        let window = attachToWindow(controller)
+
+        controller.apply(
+            dataSource: dataSource(count: 4),
+            page: box.binding,
+            configuration: SwiftPagerConfiguration(preloadDistance: 1, retentionDistance: 1),
+            content: { LayoutProbePage(value: $0, recorder: recorder) }
+        )
+
+        #expect(recorder.layoutCount(for: 2) == 0)
+
+        controller.scrollViewWillBeginDragging(scrollView)
+        let pageZeroLayoutCount = recorder.layoutCount(for: 0)
+        let pageOneLayoutCount = recorder.layoutCount(for: 1)
+        scrollView.contentOffset = CGPoint(x: 6, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(recorder.layoutCount(for: 2) > 0)
+        #expect(recorder.layoutCount(for: 0) == pageZeroLayoutCount)
+        #expect(recorder.layoutCount(for: 1) == pageOneLayoutCount)
+
+        let pageTwoLayoutCount = recorder.layoutCount(for: 2)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(recorder.layoutCount(for: 2) == pageTwoLayoutCount)
+        _ = window
+    }
+
+    @Test
     func memoryWarningDiscardsRetainedHosts() async throws {
         let box = PageBox(0)
         let controller = makeController()
