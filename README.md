@@ -23,7 +23,7 @@
 ## Install
 
 ```swift
-.package(url: "https://github.com/ItzNotABug/SwiftPagerKit.git", from: "0.1.1")
+.package(url: "https://github.com/ItzNotABug/SwiftPagerKit.git", from: "0.1.2")
 ```
 
 Add `SwiftPagerKit` to your app target and import the public module:
@@ -155,15 +155,22 @@ Run `scripts/test/demo.sh` when changing the sample app.
 ## FAQ
 
 <details>
-<summary>Common questions</summary>
+<summary>What is the layout contract?</summary>
 
-**What is the layout contract?**  
 SwiftPagerKit uses a full-bounds viewport with `contentInsetAdjustmentBehavior = .never`. Put safe-area padding inside page content.
 
-**How does RTL work?**  
+</details>
+
+<details>
+<summary>How does RTL work?</summary>
+
 Page `0` is physically first, forward scrolling advances to the next page, and hosted content mirrors automatically in RTL locales.
 
-**Which restoration policy should I use?**  
+</details>
+
+<details>
+<summary>Which restoration policy should I use?</summary>
+
 Use `.preserve` when page identity matters across empty/loading states. Use `.reset` when new data should start from page zero.
 
 </details>
