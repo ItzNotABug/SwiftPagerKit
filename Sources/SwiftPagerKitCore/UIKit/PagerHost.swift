@@ -129,6 +129,7 @@ final class PagerHost<Element, Content: View> {
     }
 
     func prepareForRetention() {
+        removeFromParentIfNeeded()
         zoomContainer?.prepareForRetention()
     }
 
@@ -182,6 +183,13 @@ final class PagerHost<Element, Content: View> {
             existingContainer.removeFromSuperview()
             zoomContainer = nil
         }
+    }
+
+    private func removeFromParentIfNeeded() {
+        guard controller.parent != nil else { return }
+        controller.willMove(toParent: nil)
+        view.removeFromSuperview()
+        controller.removeFromParent()
     }
 }
 

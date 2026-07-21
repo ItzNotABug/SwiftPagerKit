@@ -1836,13 +1836,194 @@ struct PagerViewControllerBehaviorTests {
         events.removeAll()
         scrollView.contentOffset = CGPoint(x: 200, y: 0)
         controller.scrollViewDidScroll(scrollView)
-        #expect(events.contains("detach:0"))
+        #expect(events == ["detach:0", "attach:2", "attach:3"])
 
         events.removeAll()
         scrollView.contentOffset = CGPoint(x: 0, y: 0)
         controller.scrollViewDidScroll(scrollView)
 
-        #expect(events.contains("attach:0"))
+        #expect(events == ["detach:2", "detach:3", "attach:0"])
+    }
+
+    @Test
+    func retainedHostUnparentsWhileOffscreenAndReparentsWhenLive() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 2, reusePoolLimit: 0)
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        let originalView = try horizontalSubview(in: scrollView, at: 0)
+        let originalChild = try #require(controller.children.first { $0.view === originalView })
+
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(originalView.superview == nil)
+        #expect(originalChild.parent == nil)
+        #expect(!controller.children.contains(originalChild))
+
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        let restoredView = try horizontalSubview(in: scrollView, at: 0)
+        #expect(restoredView === originalView)
+        #expect(originalChild.parent === controller)
+        #expect(controller.children.contains(originalChild))
+    }
+
+    @Test
+    func retainedZoomHostKeepsHostedViewWhileUnparentedOffscreen() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 2, reusePoolLimit: 0)
+        var settings = SwiftPagerSettings<Int>()
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        let originalContainer = try #require(horizontalSubview(in: scrollView, at: 0) as? PagerZoomContainer<Int>)
+        let originalChild = try #require(controller.children.first { $0.view.superview === originalContainer })
+
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        #expect(originalContainer.superview == nil)
+        #expect(originalChild.parent == nil)
+        #expect(originalChild.view.superview === originalContainer)
+
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+
+        let restoredContainer = try #require(horizontalSubview(in: scrollView, at: 0) as? PagerZoomContainer<Int>)
+        #expect(restoredContainer === originalContainer)
+        #expect(originalChild.parent === controller)
+        #expect(originalChild.view.superview === originalContainer)
+    }
+
+    @Test
+    func retainedHostPreservesSwiftUIStateAfterOffscreenUnparenting() async throws {
+        let box = PageBox(0)
+        let recorder = StateTokenRecorder()
+        let controller = makeController(contentType: StatefulProbePage.self)
+        let window = attachToWindow(controller)
+        let scrollView = try pagerScrollView(in: controller)
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 2, reusePoolLimit: 0)
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            configuration: configuration,
+            content: { StatefulProbePage(value: $0, recorder: recorder) }
+        )
+        controller.view.layoutIfNeeded()
+        await waitUntil {
+            recorder.token(for: 0) != nil
+        }
+
+        let firstToken = try #require(recorder.token(for: 0))
+
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        controller.view.layoutIfNeeded()
+
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        controller.view.layoutIfNeeded()
+        await drainMainActorWork()
+
+        #expect(recorder.token(for: 0) == firstToken)
+        _ = window
+    }
+
+    @Test
+    func retainedZoomHostPreservesStateObjectAfterOffscreenUnparenting() async throws {
+        let box = PageBox(0)
+        let recorder = StateObjectTokenRecorder()
+        let controller = makeController(contentType: StateObjectProbePage.self)
+        let window = attachToWindow(controller)
+        let scrollView = try pagerScrollView(in: controller)
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 2, reusePoolLimit: 0)
+        var settings = SwiftPagerSettings<Int>()
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { StateObjectProbePage(value: $0, recorder: recorder) }
+        )
+        controller.view.layoutIfNeeded()
+        await waitUntil {
+            recorder.token(for: 0) != nil
+        }
+
+        let firstToken = try #require(recorder.token(for: 0))
+
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        controller.view.layoutIfNeeded()
+
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        controller.view.layoutIfNeeded()
+        await drainMainActorWork()
+
+        #expect(recorder.token(for: 0) == firstToken)
+        _ = window
+    }
+
+    @Test
+    func retainedZoomHostDoesNotRecreateNestedUIKitController() async throws {
+        let box = PageBox(0)
+        let recorder = HostedControllerRecorder()
+        let controller = makeController(contentType: HostedControllerProbePage.self)
+        let window = attachToWindow(controller)
+        let scrollView = try pagerScrollView(in: controller)
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 2, reusePoolLimit: 0)
+        var settings = SwiftPagerSettings<Int>()
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+
+        controller.apply(
+            dataSource: dataSource(count: 5),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { HostedControllerProbePage(value: $0, recorder: recorder) }
+        )
+        controller.view.layoutIfNeeded()
+        await waitUntil {
+            recorder.controllerID(for: 0) != nil
+        }
+
+        let firstControllerID = try #require(recorder.controllerID(for: 0))
+
+        scrollView.contentOffset = CGPoint(x: 200, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        controller.view.layoutIfNeeded()
+
+        scrollView.contentOffset = CGPoint(x: 0, y: 0)
+        controller.scrollViewDidScroll(scrollView)
+        controller.view.layoutIfNeeded()
+        await drainMainActorWork()
+
+        #expect(recorder.controllerID(for: 0) == firstControllerID)
+        #expect(recorder.makeCount(for: 0) == 1)
+        _ = window
     }
 
     @Test
@@ -3837,6 +4018,8 @@ private final class CGFloatBox: @unchecked Sendable {
 
 private final class StateToken {}
 
+private final class StateObjectToken: ObservableObject {}
+
 private final class LayoutPassRecorder {
     private var layoutCountsByValue: [Int: Int] = [:]
 
@@ -3930,6 +4113,77 @@ private struct StateTokenProbe: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         recorder.record(value: value, token: token)
     }
+}
+
+private final class StateObjectTokenRecorder {
+    private var tokensByValue: [Int: ObjectIdentifier] = [:]
+
+    func record(value: Int, token: StateObjectToken) {
+        tokensByValue[value] = ObjectIdentifier(token)
+    }
+
+    func token(for value: Int) -> ObjectIdentifier? {
+        tokensByValue[value]
+    }
+}
+
+private struct StateObjectProbePage: View {
+    var value: Int
+    let recorder: StateObjectTokenRecorder
+
+    @StateObject private var token = StateObjectToken()
+
+    var body: some View {
+        StateObjectTokenProbe(value: value, token: token, recorder: recorder)
+            .frame(width: 1, height: 1)
+    }
+}
+
+private struct StateObjectTokenProbe: UIViewRepresentable {
+    var value: Int
+    let token: StateObjectToken
+    let recorder: StateObjectTokenRecorder
+
+    func makeUIView(context: Context) -> UIView {
+        recorder.record(value: value, token: token)
+        return UIView()
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        recorder.record(value: value, token: token)
+    }
+}
+
+private final class HostedControllerRecorder {
+    private var controllerIDsByValue: [Int: ObjectIdentifier] = [:]
+    private var makeCountsByValue: [Int: Int] = [:]
+
+    func recordMake(value: Int, controller: UIViewController) {
+        controllerIDsByValue[value] = ObjectIdentifier(controller)
+        makeCountsByValue[value, default: 0] += 1
+    }
+
+    func controllerID(for value: Int) -> ObjectIdentifier? {
+        controllerIDsByValue[value]
+    }
+
+    func makeCount(for value: Int) -> Int {
+        makeCountsByValue[value, default: 0]
+    }
+}
+
+private struct HostedControllerProbePage: UIViewControllerRepresentable {
+    var value: Int
+    let recorder: HostedControllerRecorder
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = UIViewController()
+        controller.view.backgroundColor = .clear
+        recorder.recordMake(value: value, controller: controller)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
 @MainActor
