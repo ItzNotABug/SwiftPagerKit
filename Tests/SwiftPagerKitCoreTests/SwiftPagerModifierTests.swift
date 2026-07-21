@@ -132,8 +132,23 @@ struct SwiftPagerModifierTests {
         #expect(configuration.pageSpacing == 4)
         #expect(settings.pageSpacing == 4)
         #expect(settings.loadMoreTrigger == .nearEnd(offsetFromEnd: 1))
-        #expect(settings.requiresPageContainer(for: 0))
+        #expect(settings.pageContainerStyle(for: 0) == .scroll)
         #expect(settings.zoomConfiguration(0) == .enabled(minimumScale: 1, maximumScale: 4, doubleTapAction: .zoom(toFraction: 0.75)))
+    }
+
+    @Test
+    func tapAndDragCallbacksDoNotRequireNestedScrollContainer() throws {
+        var settings = SwiftPagerSettings<Int>()
+        settings.onTap = {}
+        settings.onDoubleTap = {}
+        settings.onDragStart = {}
+
+        #expect(settings.pageContainerStyle(for: 0) == .gesture)
+
+        settings.onTap = nil
+        settings.onDoubleTap = nil
+
+        #expect(settings.pageContainerStyle(for: 0) == .direct)
     }
 
     @Test
@@ -225,7 +240,7 @@ struct SwiftPagerModifierTests {
         let settings = try pagerSettings(in: pager)
 
         #expect(settings.onDismiss != nil)
-        #expect(settings.requiresPageContainer(for: 0))
+        #expect(settings.pageContainerStyle(for: 0) == .scroll)
     }
 
     @Test

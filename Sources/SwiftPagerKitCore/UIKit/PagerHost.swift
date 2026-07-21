@@ -11,9 +11,10 @@ final class PagerHost<Element, Content: View> {
     private(set) var contentRefreshToken: SwiftPagerContentRefreshToken?
     private var element: Element
     private var zoomContainer: PagerZoomContainer<Element>?
+    private var gestureContainer: PagerGestureContainer<Element>?
 
     var view: UIView {
-        zoomContainer ?? controller.view
+        zoomContainer ?? gestureContainer ?? controller.view
     }
 
     init(
@@ -94,6 +95,9 @@ final class PagerHost<Element, Content: View> {
                 settings: settings,
                 direction: direction
             )
+        } else if let gestureContainer {
+            gestureContainer.setHostedView(controller.view)
+            gestureContainer.configure(settings: settings)
         }
 
         let parentChanged = controller.parent !== parent
@@ -119,6 +123,8 @@ final class PagerHost<Element, Content: View> {
         controller.view.semanticContentAttribute = attribute
         if let zoomContainer {
             zoomContainer.semanticContentAttribute = .forceLeftToRight
+        } else if let gestureContainer {
+            gestureContainer.semanticContentAttribute = attribute
         } else {
             view.semanticContentAttribute = attribute
         }
@@ -137,6 +143,9 @@ final class PagerHost<Element, Content: View> {
         if let zoomContainer {
             zoomContainer.setNeedsLayout()
             zoomContainer.layoutIfNeeded()
+        } else if let gestureContainer {
+            gestureContainer.setNeedsLayout()
+            gestureContainer.layoutIfNeeded()
         }
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
@@ -173,15 +182,38 @@ final class PagerHost<Element, Content: View> {
         item: PagerItem<Element>,
         settings: SwiftPagerSettings<Element>
     ) {
-        if settings.requiresPageContainer(for: item.element) {
+        switch settings.pageContainerStyle(for: item.element) {
+        case .scroll:
+            if let existingContainer = gestureContainer {
+                _ = existingContainer.removeHostedView()
+                existingContainer.removeFromSuperview()
+                gestureContainer = nil
+            }
             if zoomContainer == nil {
                 zoomContainer = PagerZoomContainer<Element>()
                 zoomContainer?.setHostedView(controller.view)
             }
-        } else if let existingContainer = zoomContainer {
-            _ = existingContainer.removeHostedView()
-            existingContainer.removeFromSuperview()
-            zoomContainer = nil
+        case .gesture:
+            if let existingContainer = zoomContainer {
+                _ = existingContainer.removeHostedView()
+                existingContainer.removeFromSuperview()
+                zoomContainer = nil
+            }
+            if gestureContainer == nil {
+                gestureContainer = PagerGestureContainer<Element>()
+                gestureContainer?.setHostedView(controller.view)
+            }
+        case .direct:
+            if let existingContainer = zoomContainer {
+                _ = existingContainer.removeHostedView()
+                existingContainer.removeFromSuperview()
+                zoomContainer = nil
+            }
+            if let existingContainer = gestureContainer {
+                _ = existingContainer.removeHostedView()
+                existingContainer.removeFromSuperview()
+                gestureContainer = nil
+            }
         }
     }
 

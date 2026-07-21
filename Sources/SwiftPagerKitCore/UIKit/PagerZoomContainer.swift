@@ -76,6 +76,7 @@ final class PagerZoomContainer<Element>: UIScrollView, UIScrollViewDelegate, UIG
 
     func removeHostedView() -> UIView? {
         prepareForRemoval()
+        resetHostedViewForContainerRemoval()
         let view = hostedView
         hostedView?.removeFromSuperview()
         hostedView = nil
@@ -112,6 +113,19 @@ final class PagerZoomContainer<Element>: UIScrollView, UIScrollViewDelegate, UIG
         setContentOffset(.zero, animated: false)
         setDismissBackgroundOpacity(1, deferred: true)
         dismissBindingPageID = nil
+    }
+
+    private func resetHostedViewForContainerRemoval() {
+        minimumZoomScale = 1
+        maximumZoomScale = 1
+        if zoomScale != 1 {
+            setZoomScale(1, animated: false)
+        }
+        contentInset = .zero
+        hostedView?.transform = .identity
+        if let hostedView, bounds.size != .zero {
+            hostedView.frame = CGRect(origin: .zero, size: bounds.size)
+        }
     }
 
     override func layoutSubviews() {
