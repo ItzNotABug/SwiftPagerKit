@@ -149,25 +149,27 @@ public struct SwiftPagerSettings<Element> {
     }
 }
 
+enum PagerPageContainerStyle: Equatable {
+    case direct
+    case gesture
+    case scroll
+}
+
 extension SwiftPagerSettings {
-    var hasGestureCallbacks: Bool {
-        onDismiss != nil ||
-            onTap != nil ||
-            onDoubleTap != nil ||
-            onDragStart != nil
+    var hasTapGestureCallbacks: Bool {
+        onTap != nil || onDoubleTap != nil
     }
 
-    func requiresPageContainer(for element: Element) -> Bool {
-        if hasGestureCallbacks {
-            return true
+    func pageContainerStyle(for element: Element) -> PagerPageContainerStyle {
+        if onDismiss != nil {
+            return .scroll
         }
 
-        switch zoomConfiguration(element) {
-        case .disabled:
-            return false
-        case .enabled:
-            return true
+        if case .enabled = zoomConfiguration(element) {
+            return .scroll
         }
+
+        return hasTapGestureCallbacks ? .gesture : .direct
     }
 
     func normalized() -> SwiftPagerSettings<Element> {

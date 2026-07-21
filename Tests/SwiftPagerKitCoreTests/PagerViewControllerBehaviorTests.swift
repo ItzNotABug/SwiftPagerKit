@@ -1147,6 +1147,155 @@ struct PagerViewControllerBehaviorTests {
     }
 
     @Test
+    func tapOnlyPagesUseLightGestureContainerWithoutNestedScrollView() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        var tapCount = 0
+        var doubleTapCount = 0
+        settings.onTap = { tapCount += 1 }
+        settings.onDoubleTap = { doubleTapCount += 1 }
+
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0),
+            content: { Text("\($0)") }
+        )
+
+        let pageView = try horizontalSubview(in: scrollView, at: 0)
+        let gestureContainer = try #require(pageView as? PagerGestureContainer<Int>)
+
+        #expect(!scrollView.subviews.contains { $0 is PagerZoomContainer<Int> })
+        _ = try tapRecognizer(in: gestureContainer, taps: 1)
+        _ = try tapRecognizer(in: gestureContainer, taps: 2)
+
+        gestureContainer.handleSingleTap(UITapGestureRecognizer())
+        gestureContainer.handleDoubleTap(UITapGestureRecognizer())
+
+        #expect(tapCount == 1)
+        #expect(doubleTapCount == 1)
+    }
+
+    @Test
+    func dragStartOnlyPagesUseDirectHostedView() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        var dragStartCount = 0
+        settings.onDragStart = { dragStartCount += 1 }
+
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0),
+            content: { Text("\($0)") }
+        )
+
+        let pageView = try horizontalSubview(in: scrollView, at: 0)
+        #expect(!(pageView is PagerGestureContainer<Int>))
+        #expect(!(pageView is PagerZoomContainer<Int>))
+
+        controller.scrollViewWillBeginDragging(scrollView)
+
+        #expect(dragStartCount == 1)
+    }
+
+    @Test
+    func pullToDismissPagesStillUseNestedScrollContainer() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        settings.onDismiss = {}
+
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0),
+            content: { Text("\($0)") }
+        )
+
+        #expect(scrollView.subviews.contains { $0 is PagerZoomContainer<Int> })
+    }
+
+    @Test
+    func liveHostSwitchesBetweenDirectGestureAndScrollContainers() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0)
+        func hostedView() throws -> UIView {
+            let child = try #require(controller.children.first)
+            #expect(controller.children.count == 1)
+            #expect(child.parent === controller)
+            return child.view
+        }
+
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        var pageView = try horizontalSubview(in: scrollView, at: 0)
+        #expect(!(pageView is PagerGestureContainer<Int>))
+        #expect(!(pageView is PagerZoomContainer<Int>))
+        #expect(try hostedView() === pageView)
+
+        settings.onTap = {}
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        pageView = try horizontalSubview(in: scrollView, at: 0)
+        #expect(pageView is PagerGestureContainer<Int>)
+        #expect(!(pageView is PagerZoomContainer<Int>))
+        #expect(try hostedView().superview === pageView)
+
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        pageView = try horizontalSubview(in: scrollView, at: 0)
+        #expect(pageView is PagerZoomContainer<Int>)
+        #expect(!(pageView is PagerGestureContainer<Int>))
+        #expect(try hostedView().superview === pageView)
+
+        settings.onTap = nil
+        settings.zoomConfiguration = { _ in .disabled }
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        pageView = try horizontalSubview(in: scrollView, at: 0)
+        #expect(!(pageView is PagerGestureContainer<Int>))
+        #expect(!(pageView is PagerZoomContainer<Int>))
+        #expect(try hostedView() === pageView)
+    }
+
+    @Test
     func zoomContainerConfigureDoesNotResetActiveTransform() {
         let container = PagerZoomContainer<Int>()
         let hostedView = UIView()
@@ -1643,6 +1792,22 @@ struct PagerViewControllerBehaviorTests {
 
         #expect(try tapRecognizer(in: container, taps: 1) === initialSingleTap)
         #expect(try tapRecognizer(in: container, taps: 2) === initialDoubleTap)
+    }
+
+    @Test
+    func zoomContainerKeepsDragStartCallbackForInternalPan() {
+        let container = PagerZoomContainer<Int>()
+        let hostedView = UIView()
+        var settings = SwiftPagerSettings<Int>()
+        var dragStartCount = 0
+        settings.onDragStart = { dragStartCount += 1 }
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+
+        container.setHostedView(hostedView)
+        container.configure(element: 0, settings: settings, direction: .horizontal)
+        container.scrollViewWillBeginDragging(container)
+
+        #expect(dragStartCount == 1)
     }
 
     @Test
