@@ -23,7 +23,7 @@
 ## Install
 
 ```swift
-.package(url: "https://github.com/ItzNotABug/SwiftPagerKit.git", from: "0.1.1")
+.package(url: "https://github.com/ItzNotABug/SwiftPagerKit.git", from: "0.1.2")
 ```
 
 Add `SwiftPagerKit` to your app target and import the public module:
