@@ -1296,6 +1296,50 @@ struct PagerViewControllerBehaviorTests {
     }
 
     @Test
+    func zoomedHostResetsBeforeSwitchingToLightGestureContainer() throws {
+        let box = PageBox(0)
+        let controller = makeController()
+        let scrollView = try pagerScrollView(in: controller)
+        var settings = SwiftPagerSettings<Int>()
+        settings.onTap = {}
+        settings.zoomConfiguration = { _ in .enabled(minimumScale: 1, maximumScale: 4) }
+        let configuration = SwiftPagerConfiguration(preloadDistance: 0, retentionDistance: 0)
+
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        let zoomContainer = try #require(horizontalSubview(in: scrollView, at: 0) as? PagerZoomContainer<Int>)
+        zoomContainer.layoutSubviews()
+        let hostedView = try #require(zoomContainer.subviews.first)
+        zoomContainer.setZoomScale(2, animated: false)
+        zoomContainer.layoutSubviews()
+
+        #expect(zoomContainer.zoomScale == 2)
+
+        settings.zoomConfiguration = { _ in .disabled }
+        controller.apply(
+            dataSource: dataSource(count: 1),
+            page: box.binding,
+            settings: settings,
+            configuration: configuration,
+            content: { Text("\($0)") }
+        )
+
+        let gestureContainer = try #require(horizontalSubview(in: scrollView, at: 0) as? PagerGestureContainer<Int>)
+        gestureContainer.layoutIfNeeded()
+
+        #expect(hostedView.superview === gestureContainer)
+        #expect(hostedView.transform == .identity)
+        #expect(hostedView.frame == gestureContainer.bounds)
+        #expect(!scrollView.subviews.contains { $0 is PagerZoomContainer<Int> })
+    }
+
+    @Test
     func zoomContainerConfigureDoesNotResetActiveTransform() {
         let container = PagerZoomContainer<Int>()
         let hostedView = UIView()
