@@ -474,8 +474,9 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         }
     }
 
-    private func updateWindow(center: Int, reconcileIdentity: Bool = false, directionBias: Int? = nil) {
-        guard let content else { return }
+    @discardableResult
+    private func updateWindow(center: Int, reconcileIdentity: Bool = false, directionBias: Int? = nil) -> [PagerHost<Element, Content>] {
+        guard let content else { return [] }
 
         let resolvedCenter = clampedPageIndex(center)
         let effectiveDirectionBias = directionBias ?? prefetchDirectionBias(for: resolvedCenter)
@@ -508,6 +509,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         pruneRetainedHosts(outside: retentionRange)
 
         var attachedNow = Set<Int>()
+        var newlyAttachedHosts: [PagerHost<Element, Content>] = []
         for index in diff.toAttach {
             guard let item = dataSource.item(index) else { continue }
             let host = takeHost(for: item, content: content)
@@ -519,6 +521,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
             host.updateSemanticContentAttribute(pageContentSemanticContentAttribute)
             attachedHostsByIndex[index] = host
             attachedNow.insert(index)
+            newlyAttachedHosts.append(host)
         }
 
         var didUpdateAttachedMetadata = false
@@ -554,6 +557,7 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         }
         windowCenter = resolvedCenter
         windowDirectionBias = effectiveDirectionBias
+        return newlyAttachedHosts
     }
 
     private func invalidateLoadedStateCache() {
@@ -823,6 +827,13 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
     private func prewarmAttachedHostLayouts() {
         guard view.window != nil else { return }
         for host in attachedHostsByIndex.values {
+            host.prewarmLayout()
+        }
+    }
+
+    private func prewarmHostLayouts(_ hosts: [PagerHost<Element, Content>]) {
+        guard view.window != nil else { return }
+        for host in hosts {
             host.prewarmLayout()
         }
     }
@@ -1472,8 +1483,9 @@ final class PagerViewController<Element, Content: View>: UIViewController, UIScr
         let index = nearestPageIndex(for: scrollView.contentOffset)
         let directionBias = directionalPrewarmBias(rawPagePosition: rawPagePosition, center: index)
         if windowCenter != index || windowDirectionBias != directionBias {
-            updateWindow(center: index, directionBias: directionBias)
+            let newlyAttachedHosts = updateWindow(center: index, directionBias: directionBias)
             layoutAttachedHosts()
+            prewarmHostLayouts(newlyAttachedHosts)
         }
         notifyController()
     }
